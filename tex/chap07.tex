@@ -1,0 +1,97 @@
+	 	 	
+­\chapter{Porovnání klasického a kontejnerového řešení}
+V této kapitole bude kontejnerizovaný OpenStack porovnán a otestován se stávajícím VM řešením. Kapitola je rozdělena na tři základní části. V první části jsou představena jednotlivá testovací prostředí, na kterých bude testování prováděno. Druhá část je zaměřena na testování jednotlivých řešení podle daných scénářů. Tyto scénáře vychází z funkčních požadavků stanovených návrhem nové architektury. Ve třetí závěrečné části je provedeno porovnání zmíněných architektur a jejich implementace.
+
+
+\section{Definice testovacích prostředí}
+Pro testovací prostředí byla vytvořena dvě odlišná prostředí, první pro současnou a druhé pro kontejnerovanou verzi. Je nutné zmínit, že obě prostředí byla z důvodu nedostatku hardwarových zdrojů simulována virtuálně. Obě řešení byla spuštěna ve virtuálních strojích nad OpenStackem.
+
+Pro VM řešení byl použit virtuální MCP lab, který se v Mirantisu standardně využívá pro vývoj a testování. Tento lab byl vytvořen projektem OpenStack Heat, základní konfigurace byla provedena prostřednictvím SaltStacku. Celé prostředí nebylo doinstalováno, jednalo se pouze o vytvoření virtuálních zdrojů jako je networking a instalace SaltStacku, která je potřebná pro MCP.
+
+Kubernetes prostředí, které je vyžadováno pro kontejnerovaný OpenStack, bylo též vytvořeno prostřednictvím Heatu. Samotný Kubernetes byl nainstalován pomocí SaltStack formule. Pro networking bylo použito SDN Tungsten Fabric. Storage pro k8s clusteru byla řešena pomocí sdíleného souborového systému GlusterFS, ten byl prostřednictvím projektu Heketi připojen do k8s clusteru. Heketi projekt byl zvolen z důvodu dynamického vytváření perzistentních volumů pro k8s.
+
+\subsection{Testovací scénáře}
+V této části kapitoly jsou uvedeny jednotlivé testovací scénáře, na kterých bude popsáno, jak daný testovací scénář probíhá v obou prostředích. Jednotlivé testovací scénáře jsou vybrány z funkčních požadavků na kontejnerizaci stanovených v kapitole \ref{sec:chap5}.
+
+\subsection{Instalace řešení}
+Cílem prvního testovacího scénáře je ověřit možnosti instalace a vyhodnotit rychlejší instalaci. Pro instalaci Mirantis OpenStacku byla použita sada instalačních nástrojů, které jsou používány v praxi. Instalace proběhla standardním instalačním postupem popsaným v kapitole \ref{sec:chap4instal} skrze Jenkins pipeline. Průběh instalace trval hodinu a dvacet minut.
+
+Instalace kontejnerizované aplikace probíhala aplikováním jednotlivých manifestů na k8s prostředí. Před aplikováním manifestů pro jednotlivé komponenty OpenStack operátoru bylo nutné nainstalovat a nakonfigurovat do prostředí podpůrné služby MySQL a RabbitMQ. Tyto dvě služby byly nainstalovány pomocí helmu, jejich konfigurace byla provedena příkazy z přílohy \hyperref[atch:command]{B}. Poté již bylo možné aplikovat jednotlivé instalační manifesty, jejich instalace trvala cca 15 minut.
+
+\subsection{Vysoká dostupnost}
+Cílem druhého scénáře bylo ověřit, jak bude OpenStack reagovat při vypínání jednotlivých služeb a zda testovaná prostředí odolají výpadku jednotlivých serverů, nad kterými jsou spuštěny. Tento test byl v VM řešení prováděn manuálně. Jako první byly na serveru ctl01 vypnuty všechny OpenStack služby. Dostupnost byla ověřována opakovaným dotazováním se na API jednotlivých OpenStack služeb. Druhý test spočíval v restartování jednotlivých ctl serverů, bylo zajištěno, aby vždy alespoň jeden server zůstal zapnutý. Testování se opět provádělo pomocí dotazů na API. Oba testy pro OpenStack s virtuálním control planem proběhly úspěšně. Jediná problematická část, která měla  potíže s výpadky, byly dbs servery, na kterých byla spuštěná databáze. Ta vždy při opětovném připojení do clusteru musela replikovat nová data. Jelikož na testování v testovacím prostředí byl OpenStack nainstalován nově, tak se v databázi vyskytovalo málo záznamů a replikace byla téměř okamžitá.
+
+V kontejnerovém řešení jsou jednotlivé služby nasazovány v rámci k8s podů. Tyto pody jsou nasazovány prostřednictvím Deploymentu. Test vypínání služeb byl v k8s prostředí vykonán pomocí odstraňování jednotlivých podů. Druhý test byl zinscenován restartem jednotlivých compute hostů, na nichž byly kontejnery spuštěny. Verifikace dostupnosti API byla shodná jako na VM prostředí. Oba dva testy proběhly bez problémů. Pody byly po smazání nasazovány ReplicaSetem zpět do prostředí. Objekt ReplicaSet byl vytvořen v rámci k8s Deploymentu.
+
+\subsection{Zátěž}
+Třetí scénář testuje dostupnost jednotlivých API. Pro test byl použit dotaz na Keystone API, který vrací list uživatelů, kteří jsou v daném prostředí vytvořeny. Toto testování bylo v obou prostředích provedeno stejným způsobem. Pro tento typ testování bylo potřeba vytvořit validní token, pomocí kterého je možno odeslat dotaz na API. Token byl vytvořen pomocí příkazu \textit{openstack token issue} na předem danou dobu. S tímto tokenem již bylo možné vytvořit dotaz proti API, dotaz byl simulován prostřednictvím příkazu \textit{curl}. Tímto příkazem lze do dotazu uložit potřebný token, viz ukázka kódu \ref{lst:token}. Požadavek je zobrazen na řádku 11. Pro lepší formátování vrácené odpovědi byla použita python utilita \textit{-mjson.tool}, jenž slouží k parsování JSON odpovědi. Odpověď je poté přehlednější a lépe čitelná.
+
+\begin{lstlisting}[caption={Token issue a dotaz na Keystone API, zdroj: vlastní tvorba},label={lst:token}]
+root@ctl01:~# openstack token issue
++------------+-------------------------------------+
+| Field | Value |
++------------+-------------------------------------+
+| expires | 2019-07-15T09:06:30+0000 |
+| id | gAAAAABdLDQGHjWh4fEUcDKdnSNSiJiIzM |
+| project_id | 79269c93c7444f9d9957748d98882bc8 |
+| user_id | 5249ee2b007f4d569e72550ca0abc17b |
++------------+-------------------------------------+
+
+root@ctl01:~# curl -H "X-Auth-Token: gAAAAABdLDQGHjWh4fEUcDKdnSNSiJiIzM" "http://keystone-svc:5000/v3/users" | python -mjson.tool
+
+root@ctl01:~# ab -n 100 -c 50 -H "X-Auth-Token: gAAAAABdLDQGHjWh4fEUcDKdnSNSiJiIzM" "http://keystone-svc:5000/v3/users"
+
+\end{lstlisting}
+
+Pro testování zátěže byl použit v obou prostředích jednořádkový příkaz z řádku 13, který využívá nástroj Apache Benchmark. Pomocí něho lze vygenerovat počet dotazů, které poté budou odeslány na server, zároveň lze specifikovat kolik dotazů má být zasláno současně. V obou prostředích byl tento test aplikován pro sto, tisíc a deset tisíc dotazů, z toho vždy jedna desetina dotazů byla odeslána současně. Ukázka výsledku z testovacího scénáře pro sto tisíc dotazů je zobrazena na kódu \ref{lst:testreq}.
+
+\begin{lstlisting}[caption={Ukázka benchmark testu pro sto tisíc dotazů, zdroj: vlastní tvorba},label={lst:testreq}]
+Concurrency Level: 1000
+Time taken for tests: 37.549 seconds
+Complete requests: 10000
+Failed requests: 98
+(Connect: 0, Receive: 0, Length: 98, Exceptions: 0)
+Non-2xx responses: 98
+Requests per second: 266.32 [#/sec] (mean)
+Time per request: 3754.935 [ms] (mean)
+Time per request: 3.755 [ms] (mean, across all concurrent requests)
+Transfer rate: 908.98 [Kbytes/sec] received
+
+Connection Times (ms)
+min mean[+/-sd] median max
+Connect: 0 3 10.7 0 51
+Processing: 89 3556 1853.1 3297 18448
+Waiting: 89 3556 1853.1 3296 18448
+Total: 139 3560 1850.5 3297 18448
+\end{lstlisting}
+
+\subsection{Škálování}
+Čtvrtý scénář měl prověřit škálování OpenStack control plane. Ve scénáři byly testovány možnosti škálování API jednotlivých OpenStack služeb. Jak již bylo zmíněno, celé MCP řešení je navrženo jako IaaC. Jeho hlavní částí je metadatový model, jenž popisuje, jak má prostředí vypadat. U původního prostředí bylo nutné při škálování model upravit a pro jednotlivá API OpenStack služeb spustit nový virtuální server zvaný ctl04. Ten bylo nutno nakonfigurovat a nainstalovat na něj nejen balíčky pro API OpenStack služeb, ale také programy zaručující vysokou dostupnost (HAproxy, Keepalived). Celá procedura neni automatizované, a tak změny v modelu a jejich aplikování trvalo cca 20 minut.
+
+Kontejnerizovaná OpenStack služba je do k8s prostředí nasazována jako k8s Deployment, viz část o vysoké dostupnosti. Škálování pak probíhá pomocí změny parametru replicas v jednotlivých CR manifestech. Počet replik z CR manifestu je předán přes operátor ReplicaSetu a ten vytvoří požadovaný počet replik. V k8s lze využít vlastnost autoscaling, to znamená, že se nastaví pravidla, při kterých může sám orchestrátor automaticky spustit další repliky služeb nezávisle na lidském zásahu do prostředí. Proces škálování v rámci kontejnerového prostředí proběhl v rámci několika vteřin.
+
+\subsection{Lifecycle management}
+V posledním testovacím scénáři byla testována aktualizace a upgrade jednotlivých řešení. V původním MCP prostředí byl tento test aplikován pomocí sady manuálních kroků. Aktualizace i upgrade byl testován na komponentě Keystone. Obě dvě procedury si jsou velmi podobné, jedná se vždy o instalaci debian balíčku, který obsahuje nejnovější verzi či opravenou chybu. Před instalací balíčku bylo nutné na testovacím prostředí vypnout službu HAproxy, aby tento krok aktualizace proběhl bez výpadku. Požadavky na jednotlivé API pak nebyly směřovány na tento server. Balíček s novou verzí softwarů byl nainstalován ručně přes apt, po té byla daná služba restartována a znovu zapnuta HAproxy služba. Proces se opakoval pro všechny zbylé ctl servery.
+
+U kontejnerizované aplikace byly tyto aktualizační procesy prováděny odlišně. Pro aktualizaci Keystone komponenty je nutné mít předem připravený Docker Image, který bude nahrazovat stávající kontejner. Pro upgrade byl využit k8s rollout, což je funkcionalita přímo v k8s, pomocí které lze jednoduše měnit verze kontejnerů. Orchestrátor si pak stáhne vyžadovanou verzi image a postupně nahrazuje kontejnery se starou verzí za kontejnery verzí novou. Při tomto procesu není potřeba řešit postupné load balancování, jak tomu bylo u předchozího řešení, vše je řízeno samotným orchestrátorem.
+
+\section{Porovnání}
+Z uvedených testů, které byly provedeny na základě funkčních požadavků lze odvodit, že instalace kontejnerové aplikace, která obsahovala manuální kroky, je mnohem rychlejší než instalace OpenStacku postaveného na virtuálních strojích. Nutno zmínit, že do tohoto testu nebyl započten čas strávený na přípravě v prostředí. V praxi pro použití testované instalační metody pro kontejnerové prostředí je třeba předpřipravit hardwarové servery včetně operačního systému a nakonfigurované sítě, dále je třeba nainstalovat orchestrátor. Doba konfigurace hardwaru a instalace podpůrných programů během nasazování MCP trvá servisnímu inženýrovi zhruba týden. Pokud je aplikace kontejnerizovaná a nasazena v k8s clusteru, časová náročnost nasazení OpenStacku je mnohem menší, jelikož se orchestrátor dokáže starat o síťovou logiku sám bez jakéhokoliv lidského zásahu. V testu vysoké dostupnosti obě dvě řešení obstála. Obě fungují na podobném principu, kdy jednotlivé služby jsou připojeny pomocí jedné adresy, která směřuje dotazy mezi požadované služby. Při výpadku jedné služby, zůstává API stále aktivní, protože služba, na kterou jsou směrovány dotazy je spuštěna ve více replikách. U k8s je díky izolaci jednotlivých služeb možno kontejner po pádu znovu spustit. Tato skutečnost ušetří čas podpoře, jelikož při nedostupnosti služeb není nutné se přihlašovat do prostředí jako u současného řešení. K8s orchestrátor si dokáže částečně aplikaci udržovat sám. Ve třetím testu byla prověřována dostupnost API v obou prostředích. Tento test dopadl pro obě prostředí shodně. V případech testující desetitisíce dotazů se vždy některé dotazy ztratily nebo selhaly, jednalo se však o nižší desítky dotazů, což je v kontextu těch úspěšně přijatých zanedbatelné číslo. Ve škálovacím testu bylo ověřeno, že kontejnerové řešení nabízí oproti původnímu MCP větší možnosti škálování. V kontejnerovém prostředí lze služby škálovat nezávisle na sobě. K8s dokáže při správném nastavení škálovat služby automaticky, takže není potřeba asistence inženýra. Kontejnerové řešení dominuje především v rychlosti škálování jednotlivých služeb, které dokáže spouštět v jednotkách vteřin, narozdíl od původního MCP, kde spuštění nového virtuálního serveru s API trvá až desítky minut. Poslední test se týkal lifecycle managementu, a to konkrétně upgradu a aktualizací. Testem prošlo lépe kontejnerizované řešení, které má aktualizační proces vyřešený pomocí samotného orchestrátoru. Proces je oproti současnému MCP plně automatizovaný a nevyžaduje žádné skripty či pipeline. Díky oddělené logice jednotlivých služeb do kontejnerů lze velmi jednoduše aktualizovat a upravovat pouze části OpenStacku. Například pokud je nutné otestovat kompatibilitu storage a cinderu, je velmi jednoduché vyupgradovat pouze cinder kontejnery. Pokud by OpenStack s touto novou částí nefungoval, lze jednoduše a téměř okamžitě spustit znovu staré kontejnery pomocí k8s rolloutu. Porovnání jednotlivých řešení je uvedeno v souhrnné tabulce číslo \ref{tbl:vm_k8s}.
+
+\begin{table}[H]
+\begin{center}
+\caption{Porovnání prostředí}
+\label{tbl:vm_k8s}
+\begin{tabular}{|p{40mm}|p{50mm}|p{50mm}|}
+\hline
+~ & VM prostředí & Kontejnerové prostředí \\ \hline
+Doba instalace: & 85 min & 15 min \\ \hline
+Vysoká dostupnost: & Ano & Ano \\ \hline
+Dostupnost API: & 99,99\% & 99,99\% \\ \hline
+Škálování: & Manuální, v rámci desítek minut & Manuální i automatizované, v rámci vteřin \\ \hline
+Lifecycle management: & Manuální & Automatizovaný \\ \hline
+\end{tabular}
+\end{center}
+\end{table}
+
+

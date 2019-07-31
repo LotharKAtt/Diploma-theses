@@ -1,0 +1,238 @@
+\chapter{Implementace kontejnerového řešení}
+V předchozí kapitole byla popsána architektura aplikace po migraci do k8s clusteru. V této kapitole bude představena praktická implementace OpenStack operátoru, která používá zmíněnou architekturu. OpenStack je aplikace složená z několika komplexních komponent. V práci nebude popsána architektura a logika operátoru pro všechny základní OpenStack služby. Bude zde uvedena pouze ukázka implementace pro službu Keystone, která slouží uživatelům pro autorizace a ostatním službám k vzájemnému propojení. V úvodu kapitoly bude představena Keystone služba, vysvětleno, jakou roli v OpenStacku plní a jak standardně probíhá její instalace. Poté bude představen nástroj operator-sdk a nakonec bude popsána implementace Keystonu v rámci OpenStack operátoru.
+
+\section{Keystone}
+Keystone je autentifikační a autorizační komponenta OpenStacku. Keystone neslouží pouze pro ověřování přístupu externích uživatelů, ale také pro OpenStack služby. Keystone je sám o sobě jeden velký API server, který slouží k propojování služeb a řízení přístupu. Jako backend používá Keystone SQL databázi, oficiální podpora existuje pro MariaDB, Postgres a MySQL. Existují i návody, jak například spustit Keystone i s modernějšími databázemi. Pro plnou funkcionalitu těchto databází je nutné upravit části keystonu, protože ne všechny patche byly přijaty komunitou. Keystone je autentifikační komponenta a často je vyžadováno integrovat ji s existujícími AAA systémy. Díky široké podpoře protokolů lze Keystone spojit se službami podporujícími OAuth, SAML či LDAP. Tyto integrace bývají vyžadovány převážně velkými zákazníky, kteří mají všechny své uživatele uložené a spravované prostřednictvím jednoho IDM systému.
+
+\begin{figure}[H]
+\begin{centering}
+\includegraphics[width=0.8\textwidth]{img/keystone_schema.png}
+\par\end{centering}
+\caption{Schéma komunikace v rámci Keystone služby, zdroj: vlastní tvorba} \label{fig:keystone_schema}
+\end{figure}
+
+Schéma fungování komunikace v rámci Keystonu je zobrazeno na obrázku číslo \ref{fig:keystone_schema}. Při přístupu do OpenStacku se uživatel ověří svými přihlašovacími údaji proti keystonu. Pokud uživatel již existuje v databázi nebo IDM, tak mu je vygenerován token. Pomocí tohoto tokenu se lze dotazovat v rámci OpenStack služeb. Při dotazu na službu je vždy kontrolována validita tokenu. Při základním nastavení je token validní pouze 3600 vteřin. Pomocí validního tokenu lze vytvořit požadavek na danou službu. Komunikace mezi službami je v rámci OpenStacku reprezentována Keystone endpointy. Endpoint je tvořen pomocí url adresy s portem definovaným vždy pro daný typ služby. Na základě endpointu jednotlivé služby uvnitř cloudu komunikují. Existují tři základní typy endpointu: internal, public, admin. Jak již název napovídá, každý endpoint slouží k jinému typu přístupu. Proces komunikace je vždy stejný, ať uživatel používá Horizon rozhraní či OpenStack CLI klienta.
+
+Instalace Keystone probíhá standardně pomocí debian balíčků podobně jako u všech ostatních komponent. Keystone je nutné spustit v režimu \textit{mod\_wsgi}, obvykle se pro toto spuštění používá Apache, Nginx či jiný HTTP server. Keystone se liší od ostatních služeb svou prvotní konfigurací. Pro Keystone je potřeba provést proces zvaný bootstrap, který vytvoří endpoint, admin uživatele, doménu a službu. Tyto zdroje je nutné mít připravené dříve, než se pod Keystone začnou registrovat další služby. Pro bootstrap je zapotřebí mít již připravenou a připojenou Keystone databázi s předvytvořeným uživatelem. Poté lze provést bootstrap. Existují dvě základní metody bootstrap: přes environmentální proměnné a spuštění jednotlivých příkazů nebo přes keystone-manage nástroj. První zmíněný způsob podle zdroje \cite{envboot_dep} není bezpečný. Druhý bootstrap pomocí keystone-manage je velmi jednoduchý, stačí tomuto příkazu pouze předat parametry a on všechny akce provede automaticky. Tento typ bootstrapu je uveden v ukázce kódu \ref{lst:operator_logic} v implementaci Keystone controlleru na řádku 27.
+
+\section{Operator SDK}
+Koncept operátoru byl již představen ve druhé kapitole, týkající se kontejnerizace. Operátor je koncept, pomocí kterého lze skrze k8s API vytvářet CRD. V CRD lze nadefinovat vlastní typy objektů a pomocí operátoru pak naprogramovat logiku a chování objektu v clusteru. Operátor by se dal označit jako aplikace, která skrze k8s API ovládá jinou aplikaci. Tyto operátory lze psát pomocí různých programovacích jazyků. Jazyk musí obsahovat pouze knihovnu na komunikaci s k8s API. V rámci práce byl pro tvorbu operátoru vybrán nástroj operátor-framework, který standardizuje tvorbu operátorů. Nástroj vytvořila společnost CoreOS (nyní udržován Red Hatem). Operátor-framework podporuje pro tvorbu operátoru pouze jediný programovací jazyk, tím je Golang, dále uváděn jako Go. Go je jazyk od americké společnosti Google, byl vytvořen v roce 2007, v roce 2009 byl vydán veřejně. Go je kompilovaný statický typovaný jazyk. Výsledek zkompilovaného Go programu je jeden linkovaný binární soubor, který je možné spustit na širokém spektru platforem. Pro běh aplikace není nutné instalovat specializované prostředí, jako například pro jazyk Java (JRE). Důvodem, proč byl SDK nástroj napsán v Go, je fakt, že veškeré kontejnerové technologie využívají tento 
+jazyk, např. Docker, Kubernetes, Prometheus.
+
+\begin{figure}[H]
+\begin{centering}
+\includegraphics[width=0.8\textwidth]{img/sdk-api.png}
+\par\end{centering}
+\caption{Schéma komunikace v rámci k8s operátoru, zdroj: vlastní tvorba} \label{fig:sdk-api}
+\end{figure}
+
+Operátor-framework je složen z několika projektů. Hlavním z nich je projekt operátor-sdk, který slouží k vygenerování kostry projektu a následnému sestavení operátoru. Struktura operátoru-sdk je uvedena v příloze \hyperref[atch:tree]{A}. Sdk se ovládá pomocí operátor-sdk CLI. Sdk je složeno ze dvou základních částí: controlleru a API. Na schématu \ref{fig:sdk-api} je zobrazena komunikace v rámci operátoru. Operátor se poté vytváří pomocí příkazu \textit{operator-sdk new <Název operátoru>}. Tento příkaz vygeneruje základní kostru pro tvorbu operátoru. Hlavní částí je soubor main.go, pomocí kterého je operátor spouštěn a zároveň slouží k registraci controlleru a čtení z parametrů z CR API. Dále jsou vygenerovány manifesty pro instalaci service account a role operátoru samotného. Součástí předvygenrované kostry je také Dockerfile, podle kterého se při příkazu \textit{operator-sdk build <Název operátor image>} sestaví binární soubor a vytvoří Docker image pro operátor.
+
+Generování CR API slouží k vytvoření api adresáře a CR. Pro vytvoření k8s API je nutné operátoru-sdk sdělit dva parametry: api verzi a druh api. CR je yaml manifest, jímž se definují nové k8s objekty, které jsou operátorem rozpoznány. V api adresáři je dále vygenerováno několik go souborů. Hlavním z nich je soubor pro definování parametrů pro CR, tento soubor se jmenuje stejně jako vytvořený druh API, např. \textit{nginx\_types.go}. V souboru se pomocí struktur nadefinují proměnné, které se dají pro vytvoření k8s objektu vyplnit. Rozlišují se dva základní typy proměnných. Prvním z nich jsou proměnné typu Spec. To jsou proměnné, jež jsou naplněny CR souborem. Proměnné typu Status se plní během doby, kdy je operátor spuštěn. Funkcionalita status proměnných bude vysvětlena v části kapitoly, kde bude popsaná implementace Keystone role. Po změně tohoto souboru, který obsahuje jednotlivé struktury proměnných, je nutné přegenerovat DeepCopy metody uložené v souboru \textit{zz\_generated.deepcopy.go}. Tento soubor je unikátní v rámci api adresáře. Přegenerování se provádí pomocí operátor-sdk příkazu \textit{operator-sdk generate k8s}.
+
+Druhou částí je controller. Jeho generování probíhá stejným systémem jako API. Na rozdíl od API má controller pouze jeden jediný go soubor, který obsahuje logiku operátoru pro daný druh API. Základní částí jakéhokoliv controlleru je Reconcile funkce. V této funkci je napsána celá logika akcí, které mají být spuštěny. Reconcile si lze představit jako nekonečný cyklus, který postupně prochází zdrojový kód reconcile funkce od shora dolů a spouští požadované akce. Rozdíl od nekonečného cyklu je ten, že Reconcile není spuštěn periodicky, ale vždy po změně ve zdrojích sledovaných operátorem. Změna může být vyvolána například aplikací nové konfigurace v CR. Pokud operátor zjistí změnu, spustí funkci Reconcile znovu a při správném naprogramování bude provedena pouze daná změna a všechny akce provedené již v předchozích cyklech Reconcile funkce jsou ignorovány. V rámci controlleru lze nadefinovat tzv. watch funkce, které slouží ke sledování změn jednotlivých zdrojů. Pomocí watche lze sledovat veškeré změny v k8s API. Je tedy možné dynamicky reagovat i na změny, které se dějí uvnitř k8s clusteru. Návod jak operátor-sdk nainstalovat a zprovoznit je dostupný na \cite{okd_gettingstarted}.
+
+\section{Dockerfile}
+Celé řešení je navrhováno tak, aby bylo možné použít i upstream loci image. Z důvodu kontroly jednotlivých částí kontejnerizace a bezpečnosti aplikace bylo rozhodnuto sestavit vlastní Docker image. Zdrojové Dockerfily jsou k dispozici na GtiHubu \cite{gh_openstack_images}. Jak doporučuje oficiální Docker dokumentace \cite{docker_docs}, je pro jednotlivé image komponenty zvoleno použití konceptu základních imagií. Tedy každá služba má jednu globální image, která je společná pro všechny služby v rámci komponenty. V základní image jsou nainstalovány všechny balíčky potřebné pro spuštění aplikace. Tento koncept je vhodný především u komponent, jež obsahují velké množství služeb, například služba nova. Výhoda se projeví především při doručování opravných aktualizací, ty jsou aplikovány na úrovni základní image. Po změně v této image je nutné znovu sestavit všechny kontejnery. Protože Docker využívá systém vrstev a unionFS, tak sestavování image postavených na této základní imagi je téměř okamžité.
+
+\begin{lstlisting}[caption={Základní Dockerfile pro Keystone image, zdroj: vlastní tvorba},label={lst:dockerfile_keystone}]
+FROM ubuntu:16.04
+
+RUN apt update && \
+    apt install curl apt-transport-https -y
+
+RUN echo "deb [arch=amd64] https://mirror.mirantis.com/ /2019.2.0/openstack-queens/xenial xenial main" >> /etc/apt/sources.list.d/mcp_openstack.list &\ 
+    echo "deb [arch=amd64] https://mirror.mirantis.com/ /update/2019.2.0/openstack-queens/xenial xenial main" > /etc/apt/sources.list.d/mcp_openstack.list
+
+RUN curl -fsSL http://mirror.mirantis.com/ /2019.2.0/openstack-queens/xenial/archive-queens.key  | apt-key add -     
+
+RUN apt update && \
+    apt install uwsgi uwsgi-plugin-python -y &&\
+    apt install keystone python-openstackclient -y
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+\end{lstlisting}
+
+Na ukázce \ref{lst:dockerfile_keystone} je zobrazen base Dockerfile pro Keystone. Jako základní zdrojová image je použita distribuce Ubuntu ve verzi 16.04. Vybrána byla především z důvodu, že celé MCP používá pro doručování svých verzí OpenStacku debian balíčky. Na řádku číslo 3 je uvedena instalace nutných nástrojů k přidání externího http repozitáře. Přidání repozitáře je implementováno pomocí programu echo. V Dockerfile jsou přidány dva typy repozitářů. Základní repozitář, ve kterém jsou uloženy stabilní verze balíčků, a repozitář update, jenž obsahuje balíčky s bezpečnostními záplatami. Oba dva repozitáře jsou downstream a jsou spravovány firmou Mirantis. Poté je pomocí nástroje curl stažen GPG klíč, který slouží pro apt. Na řádku číslo 11 je zobrazena instalace samotného Keystonu a programů, které jsou nezbytné k jeho spuštění. Pro kontejnerizaci je využit OpenStack z vydání MCP 2019.2.0, což je verze OpenStack Queens. Queens je zároveň nejnovější podporovanou verzí OpenStacku v MCP \cite{mirantis_releasemap}. Na dalších řádcích je přesun a úprava práv bashového skriptu, který slouží jako entrypoint pro kontejner, viz ukázka kódu \ref{lst:keystone_entryponit}. Ve skriptu kromě jiných příkazů je nejdůležitější samotné spuštění Keystone služby na řádku 12. Jelikož Keystone je od verze Liberty, je nutné spouštět ho jako http server s mod\_wsgi módem. V původním řešení založeném na VM byl Keystone implementován pomocí Apache http serveru. Pro kontejnerové řešení je zvolen projekt uWSGI, který zaručuje stejnou funkcionalitu pro spuštění s následujícími parametry. Prvním parametrem je plugin, jelikož uWSGI neumí v základu spouštět python kód. Druhým je port, na kterém bude aplikace vystavena. Zde byl zvolen port 5000, jenž je standardní pro Keystone službu. Dále je nutné specifikovat počet workeru. Počet workeru je vypočítán na základě počtu cpu, které má kontejnerový host k dispozici. Výpočet je uveden na řádku 4. Posledním parametrem je identifikace Keystone WSGI služby. Ta je implementována pomocí programu which, který slouží k ukázání cesty na spustitelný soubor příkazu keystone-wsgi-public.
+
+\begin{lstlisting}[caption={Entrypoint pro Keystone image, zdroj: vlastní tvorba},label={lst:keystone_entryponit}]
+#!/bin/bash
+
+if [[ -f /proc/cpuinfo && -z "$WORKERS" ]]; then
+    WORKERS=$[ $(grep -c processor /proc/cpuinfo) * 2 + 1 ]
+fi
+
+BIND_PORT=5000
+
+echo 'export PS1="[\u@keystone] \W # "' >> /root/.bash_profile
+
+echo "Starting keystone ${COMPONENT} service"
+uwsgi --plugin http --plugin python --http :${BIND_PORT} --workers ${WORKERS} --wsgi-file $(which keystone-wsgi-public)
+\end{lstlisting}
+
+V práci není použita služba keystone-wsgi-admin, jež využívá port 35357. Celá funkcionalita této služby je převedena pod keystone-wsgi-public. Podle zdroje \cite{keystone-admin-dep} bude ve vydání OpenStacku Stein služba keystone-wsgi-admin z projektu odstraněna.
+
+\section{Implementace logiky operátoru}
+V této části kapitoly je popsána praktická implementace Keystonu v rámci OpenStack operátoru. Zdrojový kód aplikace je dostupný v GitHub repozitáři \cite{repo_openstack_operator}. OpenStack operátor využívá Go ve verzi 1.12 a používá Go.mod pro udržování jednotlivých závislostí v rámci aplikace. OpenStack včetně Keystonu potřebuje mít pro svůj správný běh i podpůrné služby, jedná se především o databázi a frontu. V řešení jsou použity technologie MySQL a RabbitMQ. Tyto dvě technologie nejsou součástí samotného operátoru. Obě technologie byly do k8s clusteru nainstalovány pomocí stabilního helm chartu a pro každou z nich byl pro OpenStack vytvořen specializovaný list uživatelů.
+
+\begin{lstlisting}[,caption={Ukázka části Keystone CR, zdroj: vlastní tvorba}, label={lst:keystone_cr}]
+apiVersion: openstack.lotharkatt.io/v1alpha1
+kind: Keystone
+metadata:
+  name: keystone
+spec:
+  release: Queens
+  replicas: 1
+  image: quay.io/lotharkatt/keystone-wsgi-public
+  config: |
+    [DEFAULT]
+    transport\_url = rabbit://openstack:cloudlab@msg-rabbitmq:5672/
+    [database]
+    connection = mysql+pymysql://keystone:cloudlab@mysql/keystone
+    [token]
+    provider = fernet
+  region: RegionOne
+  service:
+  - name: nova
+    type: compute
+    description: "Compute Service"
+    endpoint:
+    - port: 8774
+      protocol: http
+      availability: public,internal,admin
+  - name: cinder
+    type: volume
+    endpoint:
+    - port: 8776
+      protocol: http
+      availability: public,internal,admin
+    description: "Block Storage"
+  users:
+  - name: nova
+    password: cloudlab
+  - name: cinder
+    password: cloudlab
+\end{lstlisting}
+
+Na ukázce kódu číslo \ref{lst:keystone_cr} je možné vidět část CR pro objekt Keystone. Pomocí tohoto manifestu je služba spuštěna a konfigurována. CR manifest předává data controlleru, který vykonává naprogramovanou logiku. Počáteční struktura je velmi podobná klasickému manifestu, je zde specifikováno API, Kind a Metadata. Odlišná je především sekce Spec. Spec obsahuje parametry, jako jsou počet replik a jaká image bude použita. Pod parametrem config se nachází konfigurace, která bude použita v konfiguračním souboru keystone.conf. V sekci Spec jsou uvedeny další parametry, pomocích nichž jsou registrovány jednotlivé OpenStack služby pod Keystone. Na ukázce číslo \ref{lst:keystone_cr} je zobrazena definice pouze pro služby Nova a Cinder.
+
+\begin{lstlisting}[caption={Ukázka struktury KeystoneSpec, zdroj: vlastní tvorba},label={lst:cr_types}]
+type KeystoneSpec struct {
+	Replicas int32             `json:"replicas"`
+	Image    string            `json:"image"`
+	Config   map[string]string `json:"config"`
+	Service  []KeystoneService `json:"service"`
+	Users    []KeystoneUser    `json:"users"`
+}
+\end{lstlisting}
+
+Jak již bylo naznačeno v části operátor sdk, CR manifest je generován pomocí souboru types, jenž je tvořen v rámci api. Struktury ze souboru types slouží k mapování CR do controlleru, viz ukázka kódu číslo \ref{lst:cr_types}. Struktura KeystoneSpec slouží pro mapování Spec parametrů v CR manifestu. Ve struktuře je vždy zobrazen název proměnné, datový typ a pojmenování proměnné v CR manifestu. U proměnné Service je možné vidět, že v rámci struktury lze použít i nově nadefinované datové typy. V případě Service se jedná o pole struktur. Pomocí vnořených struktur lze následně vytvořit komplexní definici, se kterou je možné ve zdrojovém kódu controlleru velmi efektivně pracovat.
+
+Mapování parametrů ze struktury na kontejner probíhá ve spuštěné funkci Reconcile. Pro vytvoření jednotlivých k8s objektů je potřeba vytvořit vybraný objekt a naplnit ho požadovanými daty. Pro tvorbu objektů byly použity k8s api knihovny, které jsou součástí operátor sdk a obsahují již předvytvořené k8s objekty. Jelikož se tvorba těchto objektů v operátoru často opakuje, bylo rozhodnuto vytvořit specifickou funkci, která je použitelná napříč všemi controllery pro OpenStack služby. Ukázka funkce pro tvorbu Keystone deploymentu je zobrazena na kódu číslo \ref{lst:operator_logic}. Objekt je poté předán operátoru pomocí funkce Create(), která objekt v k8s vytvoří. Create je součástí operátor clientu, jenž je ve struktuře ReconcileKeystone, která vlastní Reconcile funkci pro daný controller. Operátor client slouží také k ověřování skutečnosti, zda byl daný objekt již vytvořen. 
+
+\begin{lstlisting}[caption={Ukázka funkce createDeploymentAPI(), zdroj: vlastní tvorba},label={lst:operator_logic}]
+func createDeploymentAPI(cr *keystonev1alpha1.Keystone, name string, port int32, image string, label string) *appsv1.Deployment {
+	replicas := cr.Spec.Replicas
+	ls := common.CreateLabel(label)
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: cr.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: ls,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: ls,
+				},
+				Spec: corev1.PodSpec{
+					InitContainers: []corev1.Container{
+						{
+							Name:  name + "-init",
+							Image: "quay.io/lotharkatt/keystone-wsgi-public",
+							Command: []string{
+								"sh",
+								"-c",
+								"keystone-manage fernet_setup --keystone-user root --keystone-group root ;" +
+									"keystone-manage db_sync ;" +
+									"keystone-manage bootstrap --bootstrap-password cloudlab --bootstrap-username admin --bootstrap-project-name admin --bootstrap-role-name admin --bootstrap-service-name keystone --bootstrap-region-id RegionOne --bootstrap-admin-url http://keystone-svc:5000 --bootstrap-public-url http://keystone-svc:5000 --bootstrap-internal-url http://keystone-svc:5000",
+							},
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:            name,
+							Image:           image,
+							ImagePullPolicy: corev1.PullAlways,
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "keystone-cm",
+									MountPath: "/etc/keystone/keystone.conf",
+									SubPath: "keystone.conf",
+								},
+							},
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          name,
+									ContainerPort: port,
+								},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "keystone-cm",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "keystone-configmap",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+\end{lstlisting}
+
+V části Keystone bylo zmíněno, že služba potřebuje před svým spuštěním projít procesem bootstrapu. V rámci operátoru je bootstrap naimplementován pomocí init kontejneru. Init kontejner je speciální typ kontejneru, který je spuštěn pouze jednou (a to při vytvoření podu) a má za úkol vykonat akci, která připraví prostředí na spuštění kontejneru s aplikací. Kontejner danou akci spustí, a pokud je správně vykonána, tak se vypne a spustí aplikační kontejner. Pomocí init kontejnerů jsou často implementovány akce, jako jsou připojení volumů či inicializační konfigurace. Definice init kontejneru je uvedena na řádku 19 v ukázce \ref{lst:operator_logic}. Z ukázky pro init kontejner je patrný název a kontejnerová image, která bude spouštět list uvedených akcí. Pro spuštění akcí je nutné definovat shell, ve kterém budou příkazy spuštěny. První příkaz slouží pro vygenerování fernet tokenu, což je typ tokenu, který se používá pro autorizaci a autentifikaci. Poté jsou pomocí příkazu \textit{keystone-manage sync\_db} vytvořeny tabulky pro Keystone službu v databázi. Poslední příkaz provede bootstrap proces, ve kterém se vytvoří uživatel admin, služba a endpointy pro OpenStack. Tyto informace jsou následně uloženy do databáze. Díky využití databáze není nutné tyto údaje sdílet napřímo s aplikačním kontejnerem, který si po spuštění potřebné informace zjistí sám z databáze.
+
+Podle zdroje \cite{mastering_k8s} by se aplikace vyvíjené pro k8s měly konfigurovat skrze environmentální proměnné. Problémem Keystonu je, že tato služba nebyla od začátku vyvíjena na běh v kontejnerovém prostředí a pro svůj běh a integrace používá ke konfigurování pouze konfigurační soubory. Pro konfiguraci takovýchto aplikací v k8s slouží objekt – tzv. ConfigMapy, který dokáže doručovat konfiguraci jak přes environmentální proměnné, tak přes konfigurační soubor. V praxi to funguje tak, že konfigurační soubor je připojen jako volume. Konfigurace připojení ConfigMapy je v ukázce kódu \ref{lst:operator_logic} na řádku 39. Samotná ConfigMapa je vytvořena pomocí funkce createConfigMap(), viz ukázka kódu \ref{lst:configmap}. K8s API očekává data, která mají tvořit ConfigMapu v datovém formátu mapa, tzn. klíč-hodnota. Tento formát je velmi vhodný, protože do jedné ConfigMapy lze zapouzdřit více konfiguračních souborů. Každý konfigurační soubor má v rámci ConfigMapy svůj unikátní klíč, pomocí kterého lze ConfigMapu rozdělit na více konfiguračních souborů. U této metody, kdy je použito více konfigurací v jedné ConfigMapě, je vždy nutné specifikovat parametr SubPath. Tomuto parametru je nutno specifikovat klíč konfiguračního souboru. V projektu je konfigurace doporučována prostřednictvím CR manifestu, viz ukázka \ref{lst:keystone_cr}.
+
+\begin{lstlisting}[caption={Ukázka fuknce pro generováni ConfigMap, zdroj: vlastní tvorba},label={lst:configmap}]
+func createConfigMap(cr *keystonev1alpha1.Keystone) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cr.Name + "-configmap",
+			Namespace: cr.Namespace,
+		},
+		Data: cr.Spec.Config,
+	}
+}
+\end{lstlisting}
+
+Při instalaci OpenStacku a konfiguraci Keystonu se stále opakují podobné úlohy, proto bylo nutné najít cestu jak ovládat a konfigurovat Keystone objekty služby prostřednictvím CR. Bylo rozhodnuto doplnit strukturu ReconcileKeystone o další client, který dokáže ovládat OpenStack. Tento client se jmenuje osclient a je implementován pomocí souboru knihoven zvaných Gophercloud \cite{gophercloud}. Gophercloud poskytuje OpenStack SDK pro jazyk Go a lze pomocí něho ovládat OpenStack. Problémem, který bylo v rámci logiky operátoru nutno vyřešit, je přihlášení do již vytvořeného Keystonu. Pro vytvoření instance osclienta je nutno specifikovat několik povinných parametrů, většina z nich je statická, jen parametr IdenitiyEndpoint je dynamický. Statické parametry mají pevně stanovené hodnoty, změna je možná pouze prostřednictvím CR manifestu. Parametr IdenitiyEndpoint očekává IP adresu a port, na kterém je Keystone vystaven. Tato adresa je v k8s clusteru umístěná na k8s službě, která je s kontejnerem propojena. Pro Keystone je použita adresa externího typu, tzn. že adresa je dostupná i mimo k8s cluster. Je to především z důvodu, aby byla možnost připojení na OpenStack také pomocí keystonerc souboru. Zmiňovaná adresa je poskytována SDN řešením a je pokaždé jiná, proto je nutné zaručit, aby tento parametr byl do operátoru předán dynamicky. Na uložení adresy je použita výše zmiňovaná proměnná typu Status, do které lze uložit hodnotu, která po doběhnutí Reconcilu nebude smazána. Prostřednictvím vytvořeného objektu pro Keystone k8s službu lze jednoduše ip adresu přečíst a nahrát do Status proměnné. Pokud jsou všechny parametry pro instanci validní, je vytvořen osclient, se kterým lze ovládat OpenStack. Použití osclienta je zřejmé na ukázce kódu \ref{lst:oper_user}. Z ukázky je patrné vytváření uživatelů pro OpenStack. Pomocí \textit{instance.Spec.Users} si operátor vyčítá list uživatelů z CR, poté je list uložen do proměnné users. Cyklus prochází listem a v rámci cyklu je volána funkce CreateUser(), která uživatele z manifestu vytvoří. Vstupní parametr této funkce je pouze objekt User. Stejná funkcionalita je naimplementována pro tvorbu keystone služeb a endpointů. OpenStack operátor umí OpenStack objekty z CR pouze vytvářet, nikoliv mazat. Tato funkcionalita nebyla implementována z důvodu, že by nezkušený uživatel mohl svou neopatrnou úpravou v Keystone CR manifestu nevratně poškodit konfiguraci celého OpenStack cloudu. 
+
+\begin{lstlisting}[caption={Ukázka tvorby Keystone uživatelů, zdroj: vlastní tvorba},label={lst:oper_user}]
+// Create user
+users := instance.Spec.Users
+for _, user := range users {
+	err = r.osclient.CreateUser(&osclient.User{user.Name, user.Password, "admin", "default"})
+}
+\end{lstlisting}
+
+Na obrázku číslo \ref{fig:kgetall} je vyobrazena Keystone služba nasazená do k8s clusteru. List jednotlivých podů obsahuje kromě keystonu také operátor, MySQL databázi a RabbitMQ. V přehledu k8s služeb lze vidět zmiňovanou externí adresu pro Keystone. V implementovaném prototypu je pro každou OpenStack službu nakonfigurována externí ip adresa. V ostrém nasazení by se problém s externím přístupem řešil přidáním k8s API gateway (např. Ambassador), která by zajistila lepší správu a především větší bezpečnost.
+
+\begin{figure}[H]
+\begin{centering}
+\includegraphics[width=0.9\textwidth]{img/kgetkeystone.png}
+\par\end{centering}
+\caption{Spuštěná služba Keystone v k8s, zdroj: vlastní tvorba} \label{fig:kgetall}
+\end{figure}

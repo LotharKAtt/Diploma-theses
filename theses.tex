@@ -1,0 +1,307 @@
+%% LyX 1.5.5 created this file.  For more info, see http://www.lyx.org/.
+%% Do not edit unless you really know what you are doing.
+\documentclass[a4paper,czech,openright,cleardoubleempty,BCOR10mm,DIV11]{scrreprt}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{varioref}
+\usepackage{wrapfig}
+\usepackage{fancybox}
+\usepackage{calc}
+\usepackage{framed}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{float}
+\usepackage{svg}
+\usepackage{amsmath}
+\usepackage{makecell}
+\usepackage{fourier} 
+\usepackage{pdfpages}
+
+\makeatletter
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LyX specific LaTeX coěmmands.
+\providecommand{\LyX}{L\kern-.1667em\lower.25em\hbox{Y}\kern-.125emX\@}
+\newcommand{\lyxline}[1][1pt]{%
+  \par\noindent%
+  \rule[.5ex]{\linewidth}{#1}\par}
+\newcommand{\noun}[1]{\textsc{#1}}
+%% Special footnote code from the package 'stblftnt.sty'
+%% Author: Robin Fairbairns -- Last revised Dec 13 1996
+\let\SF@@footnote\footnote
+\def\footnote{\ifx\protect\@typeset@protect
+    \expandafter\SF@@footnote
+  \else
+    \expandafter\SF@gobble@opt
+  \fi
+}
+
+\expandafter\def\csname SF@gobble@opt \endcsname{\@ifnextchar[%]
+  \SF@gobble@twobracket
+  \@gobble
+}
+\edef\SF@gobble@opt{\noexpand\protect
+  \expandafter\noexpand\csname SF@gobble@opt \endcsname}
+\def\SF@gobble@twobracket[#1]#2{}
+%% Because html converters don't know tabularnewline
+\providecommand{\tabularnewline}{\\}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Textclass specific LaTeX commands.
+\newenvironment{lyxcode}
+{\begin{list}{}{
+\setlength{\rightmargin}{\leftmargin}
+\setlength{\listparindent}{0pt}% needed for AMS classes
+\raggedright
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\normalfont\ttfamily}%
+ \item[]}
+{\end{list}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% User specified LaTeX commands.
+%<-------------------------------společná nastavení------------------------------>
+\usepackage[czech]{babel}%počeštění názvů (Obsah, Kapitola, Literatura atp.)
+\usepackage[]{hyperref} %odkazy v  pdf jsou klikací s barevnými rámečky
+\usepackage[numbers,sort&compress]{natbib} %balíček pro citace literatury  
+\usepackage{hypernat}%interakce mezi hyperref a natbib
+\newcommand{\BibTeX}{{\sc Bib}\TeX}%BibTeX logo
+\hypersetup{   % Nastavení polí PDF dokumentu 
+pdftitle={Migrace legacy aplikace do kontejnerové virtualizace},%   
+pdfauthor={Pavel Cizinsky},%  
+pdfsubject={},%   
+pdfkeywords={Docker, Kubernetes, OpenStack}%                             
+}
+\usepackage{multicol}
+
+
+
+
+%<-----------------------------volání stylů----------------------------------------->
+% (znak % je označení komentáře: co je za ním, není aktivní)
+%<------------------------------------písmo----------------------------------------->
+%\usepackage{packages/bc-latinmodern}
+%\usepackage{packages/bc-times}
+\usepackage{packages/bc-palatino}
+%\usepackage{packages/bc-iwona}
+%\usepackage{packages/bc-helvetika}
+
+
+%<------------------------------záhlaví stránek------------------------------------>
+%\usepackage{packages/bc-headings}
+\usepackage{packages/bc-fancyhdr}
+
+%<------------------------------hlavičky kapitol------------------------------------>
+%\usepackage{packages/bc-neueskapitel}
+%\usepackage{packages/bc-fancychap}
+
+\makeatother
+
+\usepackage{babel}
+
+%java code block%
+
+\usepackage{listings}
+\usepackage{color}
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+% syntax highlight pro jazyk Javascript %
+\definecolor{purple}{rgb}{0.65, 0.12, 0.82}
+\lstdefinelanguage{JavaScript}{
+  keywords={break, case, catch, const, continue, debugger, default, delete, do, else, false, finally, for, function, if, in, instanceof, let, new, null, return, switch, static, this, throw, true, try, typeof, var, void, while, with},
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]",
+  ndkeywords={class, constructor, export, extends, boolean, throw, implements, import},
+  keywordstyle=\color{blue}\bfseries,
+  ndkeywordstyle=\color{gray}\bfseries,
+  identifierstyle=\color{black},
+  commentstyle=\color{purple}\ttfamily,
+  stringstyle=\color{red}\ttfamily,
+  sensitive=true
+}
+
+\lstset{,
+  language=Javascript,
+  aboveskip=3mm,
+  belowskip=3mm,
+  showstringspaces=false,
+  columns=flexible,
+  inputencoding=utf8,
+    extendedchars=true,
+    literate=%
+    {á}{{\'a}}1
+    {č}{{\v{c}}}1
+    {ď}{{\v{d}}}1
+    {é}{{\'e}}1
+    {ě}{{\v{e}}}1
+    {í}{{\'i}}1
+    {ň}{{\v{n}}}1
+    {ó}{{\'o}}1
+    {ř}{{\v{r}}}1
+    {š}{{\v{s}}}1
+    {ť}{{\v{t}}}1
+    {ú}{{\'u}}1
+    {ů}{{\r{u}}}1
+    {ý}{{\'y}}1
+    {ž}{{\v{z}}}1
+    {Á}{{\'A}}1
+    {Č}{{\v{C}}}1
+    {Ď}{{\v{D}}}1
+    {É}{{\'E}}1
+    {Ě}{{\v{E}}}1
+    {Í}{{\'I}}1
+    {Ň}{{\v{N}}}1
+    {Ó}{{\'O}}1
+    {Ř}{{\v{R}}}1
+    {Š}{{\v{S}}}1
+    {Ť}{{\v{T}}}1
+    {Ú}{{\'U}}1
+    {Ů}{{\r{U}}}1
+    {Ý}{{\'Y}}1
+    {Ž}{{\v{Z}}}1,
+  basicstyle={\small\ttfamily},
+  xleftmargin=1cm,
+  keywordstyle=\color{blue},
+  commentstyle=\color{dkgreen},
+  stringstyle=\color{mauve},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=3,
+  numbers=left,
+  stepnumber=1,
+  showstringspaces=false,
+  tabsize=1
+}
+\usepackage{url}
+\makeatletter
+\g@addto@macro{\UrlBreaks}{\UrlOrds}
+\makeatother
+
+% vlastni package
+\usepackage{placeins}
+\usepackage{multirow}
+\usepackage{pdfpages}
+% fonty popisku
+\usepackage[font=small,labelfont=bf]{caption}
+% radkovani 
+\renewcommand{\baselinestretch}{1.2}
+\renewcommand*{\lstlistingname}{Kód} %prejmenovani lstlisting
+\renewcommand*{\lstlistlistingname}{Seznam ukázek kódu}
+% vlastni styly tabulek
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+\begin{document}
+
+\cleardoublepage{}~\thispagestyle{empty}\begin{center}\pagenumbering{roman}\vspace{10mm}
+
+\textsf{\textsc{\noun{\LARGE Univerzita Hradec Králové}}}\\
+\vspace{0.5em}
+\textsc{\noun{\LARGE Fakulta informatiky a managementu}}\\
+\vspace*{1em}
+\textsf{\textsc{\noun{\Large katedra informačních technologií }}}
+
+\vspace{4cm}
+
+\textsf{\huge DIPLOMOVÁ PRÁCE}{\huge \par}
+\vspace{15mm}
+\textsf{\LARGE Migrace legacy aplikace do kontejnerové virtualizace}{\LARGE \par}
+\vspace{10mm}
+
+\end{center} 
+
+\vspace*{\fill}
+
+\vspace{10mm}
+
+\begin{description}
+\item [{{\large Autor:}}] \noindent \textsf{\large Pavel Čižinský}{\large \par}
+\item [{{\large Studijní obor:}}] \noindent \textsf{\large Aplikovaná informatika}{\large \par}
+\item [{{\large Vedoucí práce:}}] \noindent \textsf{\large doc. Ing. Vladimír Soběslav, Ph.D}
+\newline
+\item{\large \hfill{}}\textsf{\large Hradec Králové, 2019}{\large{}
+}{\large \par}
+\end{description}
+
+\clearpage{}
+~\thispagestyle{empty}{\small ~\vfill{}
+}{\small \par}
+
+\noindent {\small \vfill{}
+ % nastavuje dynamické umístění následujícího textu do spodní části stránky
+~}{\small \par}
+
+\noindent {\small Prohlašuji, že jsem diplomovou práci vypracoval samostatně a uvedl jsem všechny použité prameny a literaturu.}{\small \par}
+
+{\small \bigskip{}
+}\noindent {\small{} V Jaroměři dne \today\hspace{\fill}Pavel Čižinský}\\
+{\small{} % doplňte patřičné datum, jméno a příjmení
+}{\small \par}
+
+{\small %%%   Výtisk pak na tomto míste nezapomeňte PODEPSAT!
+%%%                                         *********
+}{\small \par}
+
+\clearpage{}
+~\thispagestyle{empty}{\small ~\vfill{}
+}{\small \par}
+
+\noindent {\small Rád bych poděkoval doc. Ing. Vladimíru Soběslavovi, Ph.D. za odborné vedení práce, podnětné rady a čas, který mi věnoval. \newpage{}}{\small \par}
+\clearpage{}
+~\thispagestyle{empty}{\small ~\vfill{}
+}{\small \par}
+\noindent {\small \vfill{}
+ % nastavuje dynamické umístění následujícího textu do spodní části stránky
+~}{\small \par}
+\section*{Anotace}
+Diplomová práce pojednává o migraci tradiční aplikace do kontejnerového prostředí. Migrace aplikací do kontejnerového řešení je v dnešním světě mikroslužeb a cloudu obrovské téma. Kontejnerový přístup řeší spoustu kritických problémů spojených s životním cyklem aplikace. S migrací přicházejí změny, jako je nutná úprava architektury a nasazovacího procesu celé aplikace. Hlavním cílem práce je zanalyzovat možnosti migrace tradiční aplikace do kontejnerového prostředí. V praktické části je vybraná aplikace zkontejnerizována a spuštěna v kontejnerovém prostředí za pomocí představených technologií.
+
+\subsubsection*{Klíčová slova}
+Kontejnery, Legacy aplikace, Docker, Kubernetes, OpenStack
+
+\section*{Annotation}
+Title: Migration of legacy application to container environment
+\vspace{0.5cm}\FloatBarrier
+This Master’s thesis describes migration of legacy application to container-based virtualization environment. Migration of legacy applications is a huge topic in today world of clouds and microservices, because container-based virtualization solves a problems, which are connected with application lifecycle management. The main goal of this thesis is introduction to a concept of container-based virtualization and analyze selected legacy application, which will be containerized. In practical part selected application is containerized and migrated to container environment.
+\subsubsection*{Key words}
+Containers, Legacy application,Kubernetes, OpenStack
+
+\noindent {\small ~\vfill{}
+}{\small \par}
+
+\cleardoublepage{}\thispagestyle{empty}{\small \tableofcontents{}% vkládá automaticky generovaný obsah dokumentu
+\cleardoublepage{}}{\small \par}
+
+\include{tex/chap01}
+\include{tex/chap02}
+\include{tex/chap03}
+\include{tex/chap04}
+\include{tex/chap05}
+\include{tex/chap06}
+\include{tex/chap07}
+\include{tex/chap08}
+
+\addcontentsline{toc}{chapter}{Literatura} 
+
+\include{tex/_bib}
+
+\cleardoublepage{}
+
+\include{tex/prilohy}
+\include{tex/_exp}
+\listoffigures
+\listoftables
+\lstlistoflistings
+
+%zadani
+%\includepdf[pages={1},scale=0.8]{zadani2}
+%TODO: Nice to have only one \includepdf
+\includepdf[pages={1}]{zadani.pdf}
+\includepdf[pages={2}]{zadani.pdf}
+
+\clearpage{}
+\end{document}
